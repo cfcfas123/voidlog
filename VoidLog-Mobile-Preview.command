@@ -4,7 +4,7 @@ set -e
 cd "$(dirname "$0")"
 
 PORT="${VOIDLOG_PORT:-5176}"
-URL="http://127.0.0.1:${PORT}/mobile-preview.html?v=0.2"
+URL="http://127.0.0.1:${PORT}/mobile-preview.html?v=0.3"
 
 if command -v python3 >/dev/null 2>&1; then
   PYTHON_BIN="python3"
@@ -15,7 +15,7 @@ else
 fi
 
 echo "Void Log Mobile Preview"
-echo "Version: 0.2"
+echo "Version: 0.3"
 echo "URL: ${URL}"
 echo ""
 echo "브라우저가 열리면 PC에서 모바일 화면을 확인할 수 있습니다."

@@ -12,7 +12,7 @@ const config = {
 };
 
 const STORAGE_PREFIX = `void-log:${config.spaceId}`;
-const APP_VERSION = "0.2";
+const APP_VERSION = "0.3";
 const MESSAGE_LIMIT = 240;
 const ROOM_LIFETIME_HOURS = 24;
 
@@ -31,6 +31,10 @@ const state = {
   renderedMessageIds: {},
   lastRenderedRoomId: null,
   chatDrag: null,
+  chatMinimizing: false,
+  chatMinimizeTimer: null,
+  dockPopDelayTimer: null,
+  dockPopTimer: null,
 };
 
 const els = {};
@@ -63,9 +67,9 @@ function bindElements() {
     identityName: document.querySelector("#identityName"),
     newRoomButton: document.querySelector("#newRoomButton"),
     mobileIdentityButton: document.querySelector("#mobileIdentityButton"),
-    mobileIdentityDot: document.querySelector("#mobileIdentityDot"),
     mobileIdentityName: document.querySelector("#mobileIdentityName"),
     mobileNewRoomButton: document.querySelector("#mobileNewRoomButton"),
+    mobileDock: document.querySelector(".mobile-dock"),
     createRoomDialog: document.querySelector("#createRoomDialog"),
     createRoomForm: document.querySelector("#createRoomForm"),
     cancelCreateButton: document.querySelector("#cancelCreateButton"),
@@ -83,11 +87,11 @@ function bindElements() {
     roomRailCount: document.querySelector("#roomRailCount"),
     emptyState: document.querySelector("#emptyState"),
     versionLabel: document.querySelector("#versionLabel"),
-    minimizedChatBar: document.querySelector("#minimizedChatBar"),
-    minimizedRoomTitle: document.querySelector("#minimizedRoomTitle"),
-    minimizedRoomCount: document.querySelector("#minimizedRoomCount"),
+    mobileRoomButton: document.querySelector("#mobileRoomButton"),
+    mobileRoomName: document.querySelector("#mobileRoomName"),
     chatPanel: document.querySelector("#chatPanel"),
     chatPanelHeader: document.querySelector("#chatPanelHeader"),
+    closeChatButton: document.querySelector("#closeChatButton"),
     activeRoomMood: document.querySelector("#activeRoomMood"),
     activeRoomTitle: document.querySelector("#activeRoomTitle"),
     activeRoomDescription: document.querySelector("#activeRoomDescription"),
@@ -206,12 +210,11 @@ function setupEditRoomDialog() {
 function setupChat() {
   setupChatPanelDrag();
 
-  els.minimizedChatBar.addEventListener("click", () => {
+  els.closeChatButton.addEventListener("click", minimizeActiveRoom);
+
+  els.mobileRoomButton.addEventListener("click", () => {
     if (!state.activeRoomId) return;
-    state.chatMinimized = false;
-    state.forceScrollMessages = true;
-    render();
-    focusComposerIfDesktop();
+    restoreActiveRoomFromDock();
   });
 
   els.newMessagesButton.addEventListener("click", () => {
@@ -292,30 +295,7 @@ function setupChat() {
 }
 
 function setupChatPanelDrag() {
-  els.chatPanelHeader.addEventListener("pointerdown", (event) => {
-    if (els.chatPanel.hidden || state.chatMinimized) return;
-
-    state.chatDrag = {
-      pointerId: event.pointerId,
-      startY: event.clientY,
-      lastY: event.clientY,
-      startTime: performance.now(),
-    };
-    els.chatPanel.classList.add("is-dragging");
-    els.chatPanel.style.setProperty("--drag-y", "0px");
-    els.chatPanelHeader.setPointerCapture?.(event.pointerId);
-  });
-
-  els.chatPanelHeader.addEventListener("pointermove", (event) => {
-    if (!state.chatDrag || state.chatDrag.pointerId !== event.pointerId) return;
-
-    state.chatDrag.lastY = event.clientY;
-    const deltaY = Math.max(0, event.clientY - state.chatDrag.startY);
-    els.chatPanel.style.setProperty("--drag-y", `${Math.min(deltaY, 180)}px`);
-  });
-
-  els.chatPanelHeader.addEventListener("pointerup", finishChatPanelDrag);
-  els.chatPanelHeader.addEventListener("pointercancel", cancelChatPanelDrag);
+  // Drag minimization is paused, but the helpers below are kept for later reuse.
 
   document.addEventListener("keydown", (event) => {
     if (event.key === "Escape" && getActiveRoom() && !state.chatMinimized) {
@@ -330,8 +310,9 @@ function finishChatPanelDrag(event) {
   const deltaY = state.chatDrag.lastY - state.chatDrag.startY;
   const elapsed = Math.max(performance.now() - state.chatDrag.startTime, 1);
   const velocity = deltaY / elapsed;
+  const distanceThreshold = Math.min(160, window.innerHeight * 0.22);
 
-  if (deltaY > 72 || (deltaY > 36 && velocity > 0.45)) {
+  if (deltaY > distanceThreshold || (deltaY > 42 && velocity > 0.45)) {
     minimizeActiveRoom();
     return;
   }
@@ -339,17 +320,135 @@ function finishChatPanelDrag(event) {
   cancelChatPanelDrag();
 }
 
+function setChatDragPresentation(deltaY) {
+  const maxDrag = Math.max(window.innerHeight - 86, 260);
+  const clamped = Math.min(deltaY, maxDrag);
+  const progress = Math.min(clamped / maxDrag, 1);
+
+  els.chatPanel.style.setProperty("--drag-y", `${clamped}px`);
+  els.chatPanel.style.setProperty("--drag-scale", String(1 - progress * 0.08));
+  els.chatPanel.style.setProperty("--drag-opacity", String(1 - progress * 0.2));
+  els.chatPanel.style.setProperty("--drag-blur", `${progress * 1.4}px`);
+  els.mobileRoomButton.classList.toggle("is-drag-pulling", progress > 0.04);
+  els.mobileRoomButton.classList.toggle("is-drag-ready", progress > 0.18);
+}
+
 function cancelChatPanelDrag() {
   state.chatDrag = null;
+  els.voidStage.classList.remove("is-dragging-chat");
   els.chatPanel.classList.remove("is-dragging");
+  els.mobileRoomButton.classList.remove("is-drag-target", "is-drag-pulling", "is-drag-ready");
   els.chatPanel.style.removeProperty("--drag-y");
+  els.chatPanel.style.removeProperty("--drag-scale");
+  els.chatPanel.style.removeProperty("--drag-opacity");
+  els.chatPanel.style.removeProperty("--drag-blur");
 }
 
 function minimizeActiveRoom() {
-  state.chatMinimized = true;
+  if (state.chatMinimizing) return;
+
   state.hasNewMessages = false;
+
+  if (window.matchMedia("(max-width: 720px)").matches) {
+    const prefersReducedMotion = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+    const animationDuration = prefersReducedMotion ? 40 : 420;
+
+    clearChatMinimizeTimer();
+    state.chatMinimizing = true;
+    state.chatDrag = null;
+    els.voidStage.classList.remove("is-dragging-chat");
+    els.chatPanel.classList.remove("is-dragging");
+    els.mobileRoomButton.classList.remove("is-drag-target", "is-drag-pulling", "is-drag-ready");
+    renderShellState();
+
+    els.chatPanel.classList.add("is-closing-chat");
+    void els.chatPanel.offsetHeight;
+
+    requestAnimationFrame(() => {
+      if (!state.chatMinimizing) return;
+      els.chatPanel.classList.add("is-minimizing-to-dock");
+    });
+
+    scheduleDockPop(prefersReducedMotion ? 0 : 260);
+
+    state.chatMinimizeTimer = window.setTimeout(() => {
+      state.chatMinimizeTimer = null;
+      if (!state.chatMinimizing) return;
+
+      state.chatMinimized = true;
+      state.chatMinimizing = false;
+      resetChatMinimizePresentation();
+      render();
+    }, animationDuration);
+    return;
+  }
+
   cancelChatPanelDrag();
+  state.chatMinimized = true;
   render();
+}
+
+function restoreActiveRoomFromDock() {
+  clearChatMinimizeTimer();
+  clearDockPop();
+  state.chatMinimized = false;
+  state.chatMinimizing = false;
+  state.forceScrollMessages = true;
+  resetChatMinimizePresentation();
+  render();
+  focusComposerIfDesktop();
+}
+
+function clearChatMinimizeTimer() {
+  if (!state.chatMinimizeTimer) return;
+  window.clearTimeout(state.chatMinimizeTimer);
+  state.chatMinimizeTimer = null;
+}
+
+function triggerDockPop() {
+  clearDockPop();
+  els.mobileDock.classList.remove("is-popping");
+  void els.mobileDock.offsetHeight;
+  els.mobileDock.classList.add("is-popping");
+  state.dockPopTimer = window.setTimeout(() => {
+    state.dockPopTimer = null;
+    els.mobileDock.classList.remove("is-popping");
+  }, 780);
+}
+
+function scheduleDockPop(delay) {
+  clearDockPop();
+  state.dockPopDelayTimer = window.setTimeout(() => {
+    state.dockPopDelayTimer = null;
+    if (!state.chatMinimizing && !state.chatMinimized) return;
+    triggerDockPop();
+  }, delay);
+}
+
+function clearDockPop() {
+  if (state.dockPopDelayTimer) {
+    window.clearTimeout(state.dockPopDelayTimer);
+    state.dockPopDelayTimer = null;
+  }
+  if (state.dockPopTimer) {
+    window.clearTimeout(state.dockPopTimer);
+    state.dockPopTimer = null;
+  }
+  els.mobileDock.classList.remove("is-popping");
+}
+
+function resetChatMinimizePresentation() {
+  els.voidStage.classList.remove("is-dragging-chat");
+  els.chatPanel.classList.remove("is-closing-chat", "is-dragging", "is-minimizing-to-dock");
+  els.mobileRoomButton.classList.remove(
+    "is-drag-target",
+    "is-drag-pulling",
+    "is-drag-ready",
+  );
+  els.chatPanel.style.removeProperty("--drag-y");
+  els.chatPanel.style.removeProperty("--drag-scale");
+  els.chatPanel.style.removeProperty("--drag-opacity");
+  els.chatPanel.style.removeProperty("--drag-blur");
 }
 
 function openIdentityDialog() {
@@ -475,7 +574,7 @@ function render() {
   renderRooms();
   renderRoomRail();
   renderChat();
-  renderMinimizedChat();
+  renderMobileDock();
   renderStatus();
 }
 
@@ -483,6 +582,7 @@ function renderShellState() {
   const hasActiveRoom = Boolean(getActiveRoom());
   els.voidStage.classList.toggle("is-chat-open", hasActiveRoom && !state.chatMinimized);
   els.voidStage.classList.toggle("is-chat-minimized", hasActiveRoom && state.chatMinimized);
+  els.voidStage.classList.toggle("is-minimizing-chat", state.chatMinimizing);
 }
 
 function renderRooms() {
@@ -550,7 +650,6 @@ function renderChat() {
   const room = getActiveRoom();
   if (!room) {
     els.chatPanel.hidden = true;
-    els.minimizedChatBar.hidden = true;
     els.newMessagesButton.hidden = true;
     return;
   }
@@ -565,6 +664,7 @@ function renderChat() {
   const previousIds = state.renderedMessageIds[room.id] || [];
 
   els.chatPanel.hidden = false;
+  els.chatPanel.style.setProperty("--room-color", room.color || "#67e8f9");
   els.activeRoomMood.textContent = room.mood;
   els.activeRoomTitle.textContent = room.title;
   els.activeRoomDescription.textContent = room.description || "설명 없음";
@@ -628,16 +728,16 @@ function renderChat() {
   });
 }
 
-function renderMinimizedChat() {
+function renderMobileDock() {
   const room = getActiveRoom();
-  const shouldShow = Boolean(room && state.chatMinimized);
-  els.minimizedChatBar.hidden = !shouldShow;
-  if (!shouldShow) return;
-
-  const count = getMessagesForRoom(room.id, { includePending: true }).length;
-  els.minimizedRoomTitle.textContent = room.title;
-  els.minimizedRoomCount.textContent = `${count}개`;
-  els.minimizedChatBar.style.setProperty("--room-color", room.color);
+  els.mobileRoomButton.disabled = !room;
+  els.mobileRoomButton.classList.toggle("has-room", Boolean(room));
+  els.mobileRoomButton.setAttribute(
+    "aria-label",
+    room ? `현재 대화방 ${room.title}` : "현재 대화방 없음",
+  );
+  els.mobileRoomName.textContent = room ? room.title : "";
+  els.mobileRoomButton.style.setProperty("--room-color", room?.color || "transparent");
 }
 
 function renderNewMessageButton() {
@@ -649,10 +749,14 @@ function renderStatus() {
 }
 
 function openRoom(roomId) {
+  clearChatMinimizeTimer();
+  clearDockPop();
   state.activeRoomId = roomId;
   state.chatMinimized = false;
+  state.chatMinimizing = false;
   state.forceScrollMessages = true;
   state.hasNewMessages = false;
+  resetChatMinimizePresentation();
   render();
   focusComposerIfDesktop();
 }
@@ -759,11 +863,19 @@ function getOrCreateIdentity() {
 
 function paintIdentity() {
   els.identityName.textContent = state.identity.name;
-  els.mobileIdentityName.textContent = state.identity.name;
+  els.mobileIdentityName.textContent = getMobileIdentityLabel();
   els.identityDot.style.background = state.identity.color;
   els.identityDot.style.boxShadow = `0 0 20px ${state.identity.color}`;
-  els.mobileIdentityDot.style.background = state.identity.color;
-  els.mobileIdentityDot.style.boxShadow = `0 0 20px ${state.identity.color}`;
+}
+
+function getMobileIdentityLabel() {
+  const name = state.identity.name?.trim() || "익명";
+  const defaultNameMatch = name.match(/^떠도는 사람\s*(\d{1,4})$/);
+  if (!defaultNameMatch) return name;
+
+  const explicitNumber = defaultNameMatch[1];
+  const fallbackNumber = String((hashString(state.identity.id) % 900) + 100);
+  return `익명${explicitNumber || fallbackNumber}`;
 }
 
 function setupStarfield() {

@@ -8,13 +8,13 @@
       name="description"
       content="친구들과 익명으로 작은 채팅방을 띄워두는 우주 기록장"
     />
-    <link rel="stylesheet" href="styles.css?v=0.2" />
-    <script src="config.js?v=0.2" defer></script>
+    <link rel="stylesheet" href="styles.css?v=0.3" />
+    <script src="config.js?v=0.3" defer></script>
     <script
       src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"
       defer
     ></script>
-    <script src="app.js?v=0.2" defer></script>
+    <script src="app.js?v=0.3" defer></script>
   </head>
   <body>
     <div class="app-shell">
@@ -80,34 +80,43 @@
         </section>
 
         <aside class="status-strip" aria-live="polite">
-          <span id="versionLabel">Void Log v0.2</span>
+          <span id="versionLabel">Void Log v0.3</span>
         </aside>
 
         <nav class="mobile-dock" aria-label="빠른 조작">
-          <button class="dock-button" id="mobileIdentityButton" type="button">
-            <span class="identity-chip__dot" id="mobileIdentityDot"></span>
+          <button class="dock-button dock-button--identity" id="mobileIdentityButton" type="button">
             <span id="mobileIdentityName">익명</span>
           </button>
+          <button
+            class="dock-room-slot"
+            id="mobileRoomButton"
+            type="button"
+            aria-label="현재 대화방 없음"
+            disabled
+          >
+            <span id="mobileRoomName"></span>
+          </button>
           <button class="dock-button dock-button--primary" id="mobileNewRoomButton" type="button">
-            + 새 방
+            새방 생성
           </button>
         </nav>
 
-        <button class="minimized-chat" id="minimizedChatBar" type="button" hidden>
-          <span>
-            <span class="minimized-chat__label">현재 방</span>
-            <strong id="minimizedRoomTitle">방</strong>
-          </span>
-          <span id="minimizedRoomCount">0개</span>
-        </button>
-
         <section class="chat-panel" id="chatPanel" aria-label="채팅방" hidden>
           <div class="chat-panel__header" id="chatPanelHeader">
+            <button
+              class="chat-panel__close"
+              id="closeChatButton"
+              type="button"
+              aria-label="채팅방 최소화"
+            >
+              x
+            </button>
             <div class="chat-panel__room">
               <p class="eyebrow" id="activeRoomMood">Room</p>
               <h2 id="activeRoomTitle">방</h2>
               <p id="activeRoomDescription"></p>
             </div>
+            <span class="chat-panel__header-spacer" aria-hidden="true"></span>
           </div>
 
           <div class="messages-wrap">
