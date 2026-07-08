@@ -8,13 +8,13 @@
       name="description"
       content="친구들과 익명으로 작은 채팅방을 띄워두는 우주 기록장"
     />
-    <link rel="stylesheet" href="styles.css" />
-    <script src="config.js" defer></script>
+    <link rel="stylesheet" href="styles.css?v=0.2" />
+    <script src="config.js?v=0.2" defer></script>
     <script
       src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"
       defer
     ></script>
-    <script src="app.js" defer></script>
+    <script src="app.js?v=0.2" defer></script>
   </head>
   <body>
     <div class="app-shell">
@@ -80,9 +80,7 @@
         </section>
 
         <aside class="status-strip" aria-live="polite">
-          <span id="connectionStatus">로컬 모드</span>
-          <span id="roomCount">방 0개</span>
-          <span id="messageCount">메시지 0개</span>
+          <span id="versionLabel">Void Log v0.2</span>
         </aside>
 
         <nav class="mobile-dock" aria-label="빠른 조작">

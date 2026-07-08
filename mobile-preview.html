@@ -1,0 +1,151 @@
+<!doctype html>
+<html lang="ko">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Void Log Mobile Preview</title>
+    <style>
+      :root {
+        color-scheme: dark;
+        --bg: #05070c;
+        --panel: rgba(12, 18, 28, 0.82);
+        --text: #eef6ff;
+        --muted: #9ba8b7;
+        --line: rgba(238, 246, 255, 0.16);
+        --accent: #67e8f9;
+        font-family:
+          Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont,
+          "Segoe UI", sans-serif;
+      }
+
+      * {
+        box-sizing: border-box;
+      }
+
+      body {
+        min-height: 100vh;
+        margin: 0;
+        color: var(--text);
+        background:
+          radial-gradient(circle at 18% 18%, rgba(103, 232, 249, 0.16), transparent 28%),
+          radial-gradient(circle at 84% 76%, rgba(251, 191, 36, 0.1), transparent 24%),
+          var(--bg);
+      }
+
+      .preview-shell {
+        display: grid;
+        grid-template-columns: minmax(260px, 360px) auto;
+        align-items: center;
+        justify-content: center;
+        gap: 38px;
+        min-height: 100vh;
+        padding: 32px;
+      }
+
+      .preview-copy {
+        max-width: 360px;
+      }
+
+      .eyebrow {
+        margin: 0 0 8px;
+        color: var(--muted);
+        font-size: 11px;
+        font-weight: 800;
+        letter-spacing: 0.16em;
+        text-transform: uppercase;
+      }
+
+      h1 {
+        margin: 0 0 14px;
+        font-size: 34px;
+        letter-spacing: 0;
+      }
+
+      p {
+        margin: 0 0 16px;
+        color: var(--muted);
+        line-height: 1.6;
+      }
+
+      code {
+        border: 1px solid var(--line);
+        border-radius: 6px;
+        padding: 2px 6px;
+        color: var(--accent);
+        background: rgba(255, 255, 255, 0.06);
+      }
+
+      .version {
+        display: inline-flex;
+        border: 1px solid rgba(103, 232, 249, 0.34);
+        border-radius: 999px;
+        padding: 8px 12px;
+        color: var(--text);
+        background: rgba(103, 232, 249, 0.1);
+      }
+
+      .phone-frame {
+        width: 430px;
+        border: 1px solid var(--line);
+        border-radius: 34px;
+        padding: 18px;
+        background:
+          linear-gradient(145deg, rgba(255, 255, 255, 0.08), transparent),
+          rgba(0, 0, 0, 0.42);
+        box-shadow: 0 32px 100px rgba(0, 0, 0, 0.58);
+      }
+
+      .phone-speaker {
+        width: 74px;
+        height: 6px;
+        margin: 0 auto 14px;
+        border-radius: 999px;
+        background: rgba(238, 246, 255, 0.24);
+      }
+
+      iframe {
+        display: block;
+        width: 390px;
+        height: 844px;
+        border: 1px solid rgba(255, 255, 255, 0.12);
+        border-radius: 24px;
+        background: #03050a;
+      }
+
+      @media (max-width: 900px) {
+        .preview-shell {
+          grid-template-columns: 1fr;
+          padding: 20px;
+        }
+
+        .phone-frame {
+          width: min(430px, 100%);
+          margin: 0 auto;
+        }
+
+        iframe {
+          width: 100%;
+          height: 80vh;
+        }
+      }
+    </style>
+  </head>
+  <body>
+    <main class="preview-shell">
+      <section class="preview-copy">
+        <p class="eyebrow">Local mobile preview</p>
+        <h1>Void Log 모바일 확인</h1>
+        <p>
+          실제 앱을 <code>390 x 844</code> 화면 안에서 띄웁니다. 자잘한
+          패치는 여기서 확인하고, 공개 배포할 때만 앱 버전을 올리면 됩니다.
+        </p>
+        <p class="version">Void Log v0.2</p>
+      </section>
+
+      <section class="phone-frame" aria-label="모바일 화면 미리보기">
+        <div class="phone-speaker" aria-hidden="true"></div>
+        <iframe src="index.html?v=0.2" title="Void Log mobile viewport"></iframe>
+      </section>
+    </main>
+  </body>
+</html>

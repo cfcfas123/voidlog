@@ -29,6 +29,23 @@ python3 -m http.server 5173
 http://localhost:5173
 ```
 
+## PC에서 모바일 UI 확인
+
+자잘한 편의성 패치는 공개 배포 전에 모바일 미리보기로 확인합니다.
+
+macOS에서는 아래 파일을 더블클릭합니다.
+
+```text
+VoidLog-Mobile-Preview.command
+```
+
+그러면 로컬 서버가 켜지고 `mobile-preview.html`이 열립니다. PC 화면 안에
+390 x 844 모바일 화면으로 실제 앱이 표시됩니다.
+
+작은 수정은 로컬에서 확인하고, 큰 흐름이 안정되면 `index.html`,
+`app.js`, `mobile-preview.html`, 실행 파일의 버전 값을 함께 올린 뒤
+GitHub Pages에 배포합니다.
+
 ## 친구들과 실제로 같이 쓰기
 
 친구들에게 공유하려면 GitHub Pages, Vercel, Netlify 같은 공개 호스팅에 올려야 합니다. 이 프로젝트는 정적 파일만으로 돌아가므로 GitHub Pages로도 충분합니다.

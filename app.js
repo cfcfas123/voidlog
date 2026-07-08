@@ -12,6 +12,7 @@ const config = {
 };
 
 const STORAGE_PREFIX = `void-log:${config.spaceId}`;
+const APP_VERSION = "0.2";
 const MESSAGE_LIMIT = 240;
 const ROOM_LIFETIME_HOURS = 24;
 
@@ -80,9 +81,7 @@ function bindElements() {
     roomRail: document.querySelector("#roomRail"),
     roomRailCount: document.querySelector("#roomRailCount"),
     emptyState: document.querySelector("#emptyState"),
-    connectionStatus: document.querySelector("#connectionStatus"),
-    roomCount: document.querySelector("#roomCount"),
-    messageCount: document.querySelector("#messageCount"),
+    versionLabel: document.querySelector("#versionLabel"),
     minimizedChatBar: document.querySelector("#minimizedChatBar"),
     minimizedRoomTitle: document.querySelector("#minimizedRoomTitle"),
     minimizedRoomCount: document.querySelector("#minimizedRoomCount"),
@@ -588,11 +587,7 @@ function renderNewMessageButton() {
 }
 
 function renderStatus() {
-  const providerLabel =
-    state.provider instanceof SupabaseProvider ? "Supabase 실시간" : "로컬 모드";
-  els.connectionStatus.textContent = providerLabel;
-  els.roomCount.textContent = `방 ${state.rooms.length}개`;
-  els.messageCount.textContent = `메시지 ${state.messages.length + state.pendingMessages.length}개`;
+  els.versionLabel.textContent = `Void Log v${APP_VERSION}`;
 }
 
 function openRoom(roomId) {
