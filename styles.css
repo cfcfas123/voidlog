@@ -369,13 +369,25 @@ select:focus-visible {
   backdrop-filter: blur(24px);
 }
 
+.chat-panel.is-dragging {
+  transform: translateY(var(--drag-y, 0px));
+  transition: none;
+}
+
 .chat-panel__header {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) auto;
+  grid-template-columns: minmax(0, 1fr);
   align-items: start;
   gap: 14px;
   padding: 18px;
   border-bottom: 1px solid var(--line);
+  cursor: grab;
+  touch-action: none;
+  user-select: none;
+}
+
+.chat-panel__header:active {
+  cursor: grabbing;
 }
 
 .chat-panel__room {
@@ -398,13 +410,6 @@ select:focus-visible {
 .ghost-button {
   align-self: start;
   padding: 8px 12px;
-}
-
-.chat-panel__actions {
-  display: flex;
-  flex-wrap: wrap;
-  justify-content: flex-end;
-  gap: 8px;
 }
 
 .messages-wrap {
@@ -897,6 +902,10 @@ select:focus-visible {
     border-left: 0;
     border-radius: 18px 18px 0 0;
     animation: sheet-up 180ms ease both;
+  }
+
+  .chat-panel.is-dragging {
+    animation: none;
   }
 
   .chat-panel__header {

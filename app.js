@@ -30,6 +30,7 @@ const state = {
   hasNewMessages: false,
   renderedMessageIds: {},
   lastRenderedRoomId: null,
+  chatDrag: null,
 };
 
 const els = {};
@@ -86,8 +87,7 @@ function bindElements() {
     minimizedRoomTitle: document.querySelector("#minimizedRoomTitle"),
     minimizedRoomCount: document.querySelector("#minimizedRoomCount"),
     chatPanel: document.querySelector("#chatPanel"),
-    closeChatButton: document.querySelector("#closeChatButton"),
-    editRoomButton: document.querySelector("#editRoomButton"),
+    chatPanelHeader: document.querySelector("#chatPanelHeader"),
     activeRoomMood: document.querySelector("#activeRoomMood"),
     activeRoomTitle: document.querySelector("#activeRoomTitle"),
     activeRoomDescription: document.querySelector("#activeRoomDescription"),
@@ -161,6 +161,8 @@ function setupCreateRoomDialog() {
 }
 
 function setupEditRoomDialog() {
+  if (!els.editRoomButton) return;
+
   els.editRoomButton.addEventListener("click", () => {
     const room = getActiveRoom();
     if (!room || !canEditRoom(room)) return;
@@ -202,11 +204,7 @@ function setupEditRoomDialog() {
 }
 
 function setupChat() {
-  els.closeChatButton.addEventListener("click", () => {
-    state.chatMinimized = true;
-    state.hasNewMessages = false;
-    render();
-  });
+  setupChatPanelDrag();
 
   els.minimizedChatBar.addEventListener("click", () => {
     if (!state.activeRoomId) return;
@@ -291,6 +289,67 @@ function setupChat() {
     els.identityDialog.close();
     showToast("익명 이름을 바꿨습니다.");
   });
+}
+
+function setupChatPanelDrag() {
+  els.chatPanelHeader.addEventListener("pointerdown", (event) => {
+    if (els.chatPanel.hidden || state.chatMinimized) return;
+
+    state.chatDrag = {
+      pointerId: event.pointerId,
+      startY: event.clientY,
+      lastY: event.clientY,
+      startTime: performance.now(),
+    };
+    els.chatPanel.classList.add("is-dragging");
+    els.chatPanel.style.setProperty("--drag-y", "0px");
+    els.chatPanelHeader.setPointerCapture?.(event.pointerId);
+  });
+
+  els.chatPanelHeader.addEventListener("pointermove", (event) => {
+    if (!state.chatDrag || state.chatDrag.pointerId !== event.pointerId) return;
+
+    state.chatDrag.lastY = event.clientY;
+    const deltaY = Math.max(0, event.clientY - state.chatDrag.startY);
+    els.chatPanel.style.setProperty("--drag-y", `${Math.min(deltaY, 180)}px`);
+  });
+
+  els.chatPanelHeader.addEventListener("pointerup", finishChatPanelDrag);
+  els.chatPanelHeader.addEventListener("pointercancel", cancelChatPanelDrag);
+
+  document.addEventListener("keydown", (event) => {
+    if (event.key === "Escape" && getActiveRoom() && !state.chatMinimized) {
+      minimizeActiveRoom();
+    }
+  });
+}
+
+function finishChatPanelDrag(event) {
+  if (!state.chatDrag || state.chatDrag.pointerId !== event.pointerId) return;
+
+  const deltaY = state.chatDrag.lastY - state.chatDrag.startY;
+  const elapsed = Math.max(performance.now() - state.chatDrag.startTime, 1);
+  const velocity = deltaY / elapsed;
+
+  if (deltaY > 72 || (deltaY > 36 && velocity > 0.45)) {
+    minimizeActiveRoom();
+    return;
+  }
+
+  cancelChatPanelDrag();
+}
+
+function cancelChatPanelDrag() {
+  state.chatDrag = null;
+  els.chatPanel.classList.remove("is-dragging");
+  els.chatPanel.style.removeProperty("--drag-y");
+}
+
+function minimizeActiveRoom() {
+  state.chatMinimized = true;
+  state.hasNewMessages = false;
+  cancelChatPanelDrag();
+  render();
 }
 
 function openIdentityDialog() {
@@ -509,7 +568,6 @@ function renderChat() {
   els.activeRoomMood.textContent = room.mood;
   els.activeRoomTitle.textContent = room.title;
   els.activeRoomDescription.textContent = room.description || "설명 없음";
-  els.editRoomButton.hidden = !canEditRoom(room);
 
   const roomMessages = getMessagesForRoom(room.id, { includePending: true });
   const messageIds = roomMessages.map((message) => message.id);
