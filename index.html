@@ -1,0 +1,238 @@
+<!doctype html>
+<html lang="ko">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Void Log</title>
+    <meta
+      name="description"
+      content="친구들과 익명으로 작은 채팅방을 띄워두는 우주 기록장"
+    />
+    <link rel="stylesheet" href="styles.css" />
+    <script src="config.js" defer></script>
+    <script
+      src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"
+      defer
+    ></script>
+    <script src="app.js" defer></script>
+  </head>
+  <body>
+    <div class="app-shell">
+      <section class="gate" id="gate" hidden>
+        <div class="gate__panel">
+          <p class="eyebrow">Friends only</p>
+          <h1>Void Log</h1>
+          <p>
+            친구들이 남긴 작은 방들이 공허한 화면에 떠다닙니다. 입장 코드를
+            넣고 조용히 들어오세요.
+          </p>
+          <form id="gateForm" class="gate__form">
+            <label for="accessCode">입장 코드</label>
+            <div class="gate__row">
+              <input
+                id="accessCode"
+                name="accessCode"
+                type="password"
+                autocomplete="off"
+                placeholder="친구들끼리 정한 코드"
+              />
+              <button type="submit">입장</button>
+            </div>
+            <p class="form-note" id="gateError" role="alert"></p>
+          </form>
+        </div>
+      </section>
+
+      <main class="void-stage" id="voidStage" aria-label="익명 우주 채팅">
+        <canvas class="starfield" id="starfield" aria-hidden="true"></canvas>
+        <div class="noise" aria-hidden="true"></div>
+
+        <header class="topbar">
+          <div>
+            <p class="eyebrow">Void Log</p>
+            <h1>오늘의 공허</h1>
+          </div>
+          <div class="topbar__actions">
+            <button class="identity-chip" id="identityButton" type="button">
+              <span class="identity-chip__dot" id="identityDot"></span>
+              <span id="identityName">익명</span>
+            </button>
+            <button class="primary-action" id="newRoomButton" type="button">
+              새 채팅 파기
+            </button>
+          </div>
+        </header>
+
+        <section class="void-hint" id="emptyState">
+          <p class="eyebrow">Empty space</p>
+          <h2>아직 아무 방도 떠 있지 않음</h2>
+          <p>첫 번째 방을 만들면 친구들 화면에도 작은 창처럼 나타납니다.</p>
+        </section>
+
+        <section class="rooms-layer" id="roomsLayer" aria-label="떠 있는 채팅방"></section>
+
+        <aside class="status-strip" aria-live="polite">
+          <span id="connectionStatus">로컬 모드</span>
+          <span id="roomCount">방 0개</span>
+          <span id="messageCount">메시지 0개</span>
+        </aside>
+
+        <section class="chat-panel" id="chatPanel" aria-label="채팅방" hidden>
+          <div class="chat-panel__header">
+            <button class="ghost-button" id="closeChatButton" type="button">
+              닫기
+            </button>
+            <div>
+              <p class="eyebrow" id="activeRoomMood">Room</p>
+              <h2 id="activeRoomTitle">방</h2>
+              <p id="activeRoomDescription"></p>
+            </div>
+          </div>
+
+          <div class="messages" id="messages" aria-live="polite"></div>
+
+          <form class="composer" id="messageForm">
+            <label class="sr-only" for="messageInput">메시지</label>
+            <input
+              id="messageInput"
+              name="message"
+              type="text"
+              maxlength="240"
+              autocomplete="off"
+              placeholder="익명으로 남기기"
+            />
+            <button type="submit">전송</button>
+          </form>
+        </section>
+      </main>
+
+      <dialog class="modal" id="createRoomDialog">
+        <form class="modal__panel" id="createRoomForm" method="dialog">
+          <div class="modal__header">
+            <div>
+              <p class="eyebrow">Create room</p>
+              <h2>작은 방 띄우기</h2>
+            </div>
+            <button class="icon-button" id="cancelCreateButton" type="button" aria-label="닫기">
+              x
+            </button>
+          </div>
+
+          <label>
+            방 이름
+            <input
+              name="title"
+              type="text"
+              maxlength="28"
+              required
+              placeholder="예: 오늘 좀 이상함"
+            />
+          </label>
+
+          <label>
+            한 줄 설명
+            <input
+              name="description"
+              type="text"
+              maxlength="72"
+              placeholder="예: 아무 말이나 두고 가는 곳"
+            />
+          </label>
+
+          <label>
+            분위기
+            <select name="mood">
+              <option value="고요함">고요함</option>
+              <option value="수다">수다</option>
+              <option value="하루기록">하루기록</option>
+              <option value="익명고백">익명고백</option>
+              <option value="랜덤">랜덤</option>
+            </select>
+          </label>
+
+          <div class="color-field">
+            <span>방 색상</span>
+            <input type="hidden" name="color" value="#67e8f9" />
+            <div class="swatches" id="swatches" role="list">
+              <button
+                class="swatch is-selected"
+                type="button"
+                style="--swatch: #67e8f9"
+                data-color="#67e8f9"
+                aria-label="청록"
+              ></button>
+              <button
+                class="swatch"
+                type="button"
+                style="--swatch: #a7f3d0"
+                data-color="#a7f3d0"
+                aria-label="민트"
+              ></button>
+              <button
+                class="swatch"
+                type="button"
+                style="--swatch: #fbbf24"
+                data-color="#fbbf24"
+                aria-label="노랑"
+              ></button>
+              <button
+                class="swatch"
+                type="button"
+                style="--swatch: #fb7185"
+                data-color="#fb7185"
+                aria-label="코랄"
+              ></button>
+              <button
+                class="swatch"
+                type="button"
+                style="--swatch: #c4b5fd"
+                data-color="#c4b5fd"
+                aria-label="라벤더"
+              ></button>
+            </div>
+          </div>
+
+          <p class="form-note">
+            방은 24시간 동안 떠 있습니다. 지금 버전에서는 친구끼리 쓰는 가벼운
+            기록장으로 생각하면 됩니다.
+          </p>
+
+          <button class="primary-action primary-action--wide" type="submit">
+            우주에 띄우기
+          </button>
+        </form>
+      </dialog>
+
+      <dialog class="modal" id="identityDialog">
+        <form class="modal__panel" id="identityForm" method="dialog">
+          <div class="modal__header">
+            <div>
+              <p class="eyebrow">Anonymous name</p>
+              <h2>익명 이름 바꾸기</h2>
+            </div>
+            <button class="icon-button" id="cancelIdentityButton" type="button" aria-label="닫기">
+              x
+            </button>
+          </div>
+
+          <label>
+            표시 이름
+            <input
+              name="name"
+              type="text"
+              maxlength="18"
+              required
+              placeholder="떠도는 사람 451"
+            />
+          </label>
+
+          <button class="primary-action primary-action--wide" type="submit">
+            이름 저장
+          </button>
+        </form>
+      </dialog>
+
+      <div class="toast" id="toast" role="status" aria-live="polite"></div>
+    </div>
+  </body>
+</html>
