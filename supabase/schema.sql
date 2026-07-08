@@ -7,9 +7,11 @@ create table if not exists public.rooms (
   description text not null default '' check (char_length(description) <= 72),
   mood text not null default '고요함' check (char_length(mood) <= 16),
   color text not null default '#67e8f9' check (color ~ '^#[0-9A-Fa-f]{6}$'),
+  creator_id text,
   position_x double precision not null check (position_x between 0 and 100),
   position_y double precision not null check (position_y between 0 and 100),
   created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now(),
   expires_at timestamptz not null default now() + interval '24 hours'
 );
 
@@ -28,11 +30,18 @@ create index if not exists rooms_space_created_idx on public.rooms (space_id, cr
 create index if not exists rooms_expires_idx on public.rooms (expires_at);
 create index if not exists messages_space_room_created_idx on public.messages (space_id, room_id, created_at);
 
+alter table public.rooms
+  add column if not exists creator_id text;
+
+alter table public.rooms
+  add column if not exists updated_at timestamptz not null default now();
+
 alter table public.rooms enable row level security;
 alter table public.messages enable row level security;
 
 drop policy if exists "rooms are readable by visitors" on public.rooms;
 drop policy if exists "rooms can be created by visitors" on public.rooms;
+drop policy if exists "rooms can be updated by visitors" on public.rooms;
 drop policy if exists "messages are readable by visitors" on public.messages;
 drop policy if exists "messages can be created by visitors" on public.messages;
 
@@ -44,6 +53,12 @@ create policy "rooms are readable by visitors"
 create policy "rooms can be created by visitors"
   on public.rooms for insert
   to anon
+  with check (true);
+
+create policy "rooms can be updated by visitors"
+  on public.rooms for update
+  to anon
+  using (true)
   with check (true);
 
 create policy "messages are readable by visitors"
@@ -69,3 +84,5 @@ begin
 exception
   when duplicate_object then null;
 end $$;
+
+notify pgrst, 'reload schema';

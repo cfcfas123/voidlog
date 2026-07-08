@@ -19,9 +19,16 @@ const state = {
   identity: null,
   rooms: [],
   messages: [],
+  pendingMessages: [],
   activeRoomId: null,
+  activeEditRoomId: null,
+  chatMinimized: false,
   provider: null,
   toastTimer: null,
+  forceScrollMessages: false,
+  hasNewMessages: false,
+  renderedMessageIds: {},
+  lastRenderedRoomId: null,
 };
 
 const els = {};
@@ -32,6 +39,7 @@ document.addEventListener("DOMContentLoaded", async () => {
   paintIdentity();
   setupGate();
   setupCreateRoomDialog();
+  setupEditRoomDialog();
   setupChat();
   setupStarfield();
 
@@ -51,24 +59,40 @@ function bindElements() {
     identityDot: document.querySelector("#identityDot"),
     identityName: document.querySelector("#identityName"),
     newRoomButton: document.querySelector("#newRoomButton"),
+    mobileIdentityButton: document.querySelector("#mobileIdentityButton"),
+    mobileIdentityDot: document.querySelector("#mobileIdentityDot"),
+    mobileIdentityName: document.querySelector("#mobileIdentityName"),
+    mobileNewRoomButton: document.querySelector("#mobileNewRoomButton"),
     createRoomDialog: document.querySelector("#createRoomDialog"),
     createRoomForm: document.querySelector("#createRoomForm"),
     cancelCreateButton: document.querySelector("#cancelCreateButton"),
+    editRoomDialog: document.querySelector("#editRoomDialog"),
+    editRoomForm: document.querySelector("#editRoomForm"),
+    cancelEditButton: document.querySelector("#cancelEditButton"),
+    editSwatches: document.querySelector("#editSwatches"),
     identityDialog: document.querySelector("#identityDialog"),
     identityForm: document.querySelector("#identityForm"),
     cancelIdentityButton: document.querySelector("#cancelIdentityButton"),
     swatches: document.querySelector("#swatches"),
     roomsLayer: document.querySelector("#roomsLayer"),
+    roomRailSection: document.querySelector("#roomRailSection"),
+    roomRail: document.querySelector("#roomRail"),
+    roomRailCount: document.querySelector("#roomRailCount"),
     emptyState: document.querySelector("#emptyState"),
     connectionStatus: document.querySelector("#connectionStatus"),
     roomCount: document.querySelector("#roomCount"),
     messageCount: document.querySelector("#messageCount"),
+    minimizedChatBar: document.querySelector("#minimizedChatBar"),
+    minimizedRoomTitle: document.querySelector("#minimizedRoomTitle"),
+    minimizedRoomCount: document.querySelector("#minimizedRoomCount"),
     chatPanel: document.querySelector("#chatPanel"),
     closeChatButton: document.querySelector("#closeChatButton"),
+    editRoomButton: document.querySelector("#editRoomButton"),
     activeRoomMood: document.querySelector("#activeRoomMood"),
     activeRoomTitle: document.querySelector("#activeRoomTitle"),
     activeRoomDescription: document.querySelector("#activeRoomDescription"),
     messages: document.querySelector("#messages"),
+    newMessagesButton: document.querySelector("#newMessagesButton"),
     messageForm: document.querySelector("#messageForm"),
     messageInput: document.querySelector("#messageInput"),
     toast: document.querySelector("#toast"),
@@ -101,29 +125,14 @@ function setupGate() {
 }
 
 function setupCreateRoomDialog() {
-  els.newRoomButton.addEventListener("click", () => {
-    if (typeof els.createRoomDialog.showModal === "function") {
-      els.createRoomDialog.showModal();
-    } else {
-      els.createRoomDialog.setAttribute("open", "");
-    }
-
-    els.createRoomForm.elements.title.focus();
-  });
+  els.newRoomButton.addEventListener("click", openCreateRoomDialog);
+  els.mobileNewRoomButton.addEventListener("click", openCreateRoomDialog);
 
   els.cancelCreateButton.addEventListener("click", () => {
     els.createRoomDialog.close();
   });
 
-  els.swatches.addEventListener("click", (event) => {
-    const swatch = event.target.closest(".swatch");
-    if (!swatch) return;
-
-    els.swatches.querySelectorAll(".swatch").forEach((button) => {
-      button.classList.toggle("is-selected", button === swatch);
-    });
-    els.createRoomForm.elements.color.value = swatch.dataset.color;
-  });
+  setupSwatches(els.swatches, els.createRoomForm);
 
   els.createRoomForm.addEventListener("submit", async (event) => {
     event.preventDefault();
@@ -136,18 +145,57 @@ function setupCreateRoomDialog() {
     });
 
     try {
+      addRoomOptimistically(room);
       await state.provider.createRoom(room);
-      els.createRoomForm.reset();
-      els.createRoomForm.elements.color.value = "#67e8f9";
-      els.swatches.querySelectorAll(".swatch").forEach((button, index) => {
-        button.classList.toggle("is-selected", index === 0);
-      });
+      resetRoomForm(els.createRoomForm, els.swatches);
       els.createRoomDialog.close();
       showToast("새 방이 떠올랐습니다.");
       await refreshFromProvider();
       openRoom(room.id);
     } catch (error) {
+      removeRoomOptimistically(room.id);
       showToast("방을 만들지 못했습니다. 설정을 확인해 주세요.");
+      console.error(error);
+    }
+  });
+}
+
+function setupEditRoomDialog() {
+  els.editRoomButton.addEventListener("click", () => {
+    const room = getActiveRoom();
+    if (!room || !canEditRoom(room)) return;
+    openEditRoomDialog(room);
+  });
+
+  els.cancelEditButton.addEventListener("click", () => {
+    els.editRoomDialog.close();
+  });
+
+  setupSwatches(els.editSwatches, els.editRoomForm);
+
+  els.editRoomForm.addEventListener("submit", async (event) => {
+    event.preventDefault();
+    const room = state.rooms.find((item) => item.id === state.activeEditRoomId);
+    if (!room || !canEditRoom(room)) return;
+
+    const formData = new FormData(els.editRoomForm);
+    const patch = {
+      title: cleanText(formData.get("title"), 28) || "이름 없는 방",
+      description: cleanText(formData.get("description"), 72),
+      mood: cleanText(formData.get("mood"), 16) || "고요함",
+      color: formData.get("color") || "#67e8f9",
+      updatedAt: new Date().toISOString(),
+    };
+
+    try {
+      updateRoomOptimistically(room.id, patch);
+      await state.provider.updateRoom(room.id, patch);
+      els.editRoomDialog.close();
+      showToast("방 정보를 저장했습니다.");
+      await refreshFromProvider();
+    } catch (error) {
+      showToast("방 정보를 저장하지 못했습니다.");
+      await refreshFromProvider();
       console.error(error);
     }
   });
@@ -155,9 +203,30 @@ function setupCreateRoomDialog() {
 
 function setupChat() {
   els.closeChatButton.addEventListener("click", () => {
-    state.activeRoomId = null;
-    els.chatPanel.hidden = true;
-    renderRooms();
+    state.chatMinimized = true;
+    state.hasNewMessages = false;
+    render();
+  });
+
+  els.minimizedChatBar.addEventListener("click", () => {
+    if (!state.activeRoomId) return;
+    state.chatMinimized = false;
+    state.forceScrollMessages = true;
+    render();
+    focusComposerIfDesktop();
+  });
+
+  els.newMessagesButton.addEventListener("click", () => {
+    scrollMessagesToBottom();
+    state.hasNewMessages = false;
+    renderNewMessageButton();
+  });
+
+  els.messages.addEventListener("scroll", () => {
+    if (isMessagesNearBottom()) {
+      state.hasNewMessages = false;
+      renderNewMessageButton();
+    }
   });
 
   els.messageForm.addEventListener("submit", async (event) => {
@@ -165,31 +234,46 @@ function setupChat() {
     const content = cleanText(els.messageInput.value, MESSAGE_LIMIT);
     if (!state.activeRoomId || !content) return;
 
+    const message = buildMessage({
+      roomId: state.activeRoomId,
+      content,
+    });
+
     els.messageInput.value = "";
+    state.pendingMessages = [
+      ...state.pendingMessages,
+      {
+        ...message,
+        status: "pending",
+      },
+    ];
+    state.forceScrollMessages = true;
+    render();
 
     try {
-      await state.provider.createMessage(
-        buildMessage({
-          roomId: state.activeRoomId,
-          content,
-        }),
-      );
+      await state.provider.createMessage(message);
+      state.pendingMessages = state.pendingMessages.filter((item) => item.id !== message.id);
       await refreshFromProvider();
     } catch (error) {
-      showToast("메시지를 보내지 못했습니다.");
+      state.pendingMessages = state.pendingMessages.map((item) =>
+        item.id === message.id
+          ? {
+              ...item,
+              status: "failed",
+            }
+          : item,
+      );
+      if (!els.messageInput.value) {
+        els.messageInput.value = content;
+      }
+      render();
+      showToast("메시지를 보내지 못했습니다. 입력창에 다시 넣어뒀습니다.");
       console.error(error);
     }
   });
 
-  els.identityButton.addEventListener("click", () => {
-    els.identityForm.elements.name.value = state.identity.name;
-    if (typeof els.identityDialog.showModal === "function") {
-      els.identityDialog.showModal();
-    } else {
-      els.identityDialog.setAttribute("open", "");
-    }
-    els.identityForm.elements.name.focus();
-  });
+  els.identityButton.addEventListener("click", openIdentityDialog);
+  els.mobileIdentityButton.addEventListener("click", openIdentityDialog);
 
   els.cancelIdentityButton.addEventListener("click", () => {
     els.identityDialog.close();
@@ -209,6 +293,58 @@ function setupChat() {
   });
 }
 
+function openIdentityDialog() {
+  els.identityForm.elements.name.value = state.identity.name;
+  if (typeof els.identityDialog.showModal === "function") {
+    els.identityDialog.showModal();
+  } else {
+    els.identityDialog.setAttribute("open", "");
+  }
+  els.identityForm.elements.name.focus();
+}
+
+function openCreateRoomDialog() {
+  openDialog(els.createRoomDialog, els.createRoomForm.elements.title);
+}
+
+function openEditRoomDialog(room) {
+  state.activeEditRoomId = room.id;
+  els.editRoomForm.elements.title.value = room.title;
+  els.editRoomForm.elements.description.value = room.description || "";
+  els.editRoomForm.elements.mood.value = room.mood || "고요함";
+  setSelectedSwatch(els.editSwatches, els.editRoomForm, room.color || "#67e8f9");
+  openDialog(els.editRoomDialog, els.editRoomForm.elements.title);
+}
+
+function openDialog(dialog, focusTarget) {
+  if (typeof dialog.showModal === "function") {
+    dialog.showModal();
+  } else {
+    dialog.setAttribute("open", "");
+  }
+  requestAnimationFrame(() => focusTarget?.focus());
+}
+
+function setupSwatches(container, form) {
+  container.addEventListener("click", (event) => {
+    const swatch = event.target.closest(".swatch");
+    if (!swatch) return;
+    setSelectedSwatch(container, form, swatch.dataset.color);
+  });
+}
+
+function setSelectedSwatch(container, form, color) {
+  form.elements.color.value = color;
+  container.querySelectorAll(".swatch").forEach((button) => {
+    button.classList.toggle("is-selected", button.dataset.color === color);
+  });
+}
+
+function resetRoomForm(form, swatches) {
+  form.reset();
+  setSelectedSwatch(swatches, form, "#67e8f9");
+}
+
 function buildRoom({ title, description, mood, color }) {
   const now = new Date();
   const expiresAt = new Date(now.getTime() + ROOM_LIFETIME_HOURS * 60 * 60 * 1000);
@@ -220,9 +356,11 @@ function buildRoom({ title, description, mood, color }) {
     description,
     mood,
     color,
+    creatorId: state.identity.id,
     x: randomBetween(12, 88),
     y: randomBetween(18, 82),
     createdAt: now.toISOString(),
+    updatedAt: now.toISOString(),
     expiresAt: expiresAt.toISOString(),
   };
 }
@@ -269,12 +407,15 @@ function applySnapshot(snapshot) {
   state.messages = snapshot.messages
     .filter((message) => liveRoomIds.has(message.roomId))
     .sort(sortByCreatedAt);
+  state.pendingMessages = state.pendingMessages.filter((message) => liveRoomIds.has(message.roomId));
   render();
 }
 
 function render() {
   renderRooms();
+  renderRoomRail();
   renderChat();
+  renderMinimizedChat();
   renderStatus();
 }
 
@@ -287,14 +428,16 @@ function renderRooms() {
     button.type = "button";
     button.className = "room-node";
     button.classList.toggle("is-active", room.id === state.activeRoomId);
+    button.classList.toggle("is-owned", canEditRoom(room));
     button.style.setProperty("--x", `${room.x}%`);
     button.style.setProperty("--y", `${room.y}%`);
     button.style.setProperty("--room-color", room.color);
-    button.style.setProperty("--delay", `${randomBetween(-8, 0)}s`);
-    button.style.setProperty("--drift", `${randomBetween(8, 15)}s`);
+    const visual = getRoomVisual(room.id);
+    button.style.setProperty("--delay", `${visual.delay}s`);
+    button.style.setProperty("--drift", `${visual.drift}s`);
     button.dataset.roomId = room.id;
 
-    const count = getMessagesForRoom(room.id).length;
+    const count = getMessagesForRoom(room.id, { includePending: true }).length;
     button.innerHTML = `
       <span class="room-node__title"></span>
       <p class="room-node__desc"></p>
@@ -312,19 +455,64 @@ function renderRooms() {
   });
 }
 
+function renderRoomRail() {
+  els.roomRail.innerHTML = "";
+  els.roomRailCount.textContent = String(state.rooms.length);
+
+  state.rooms.forEach((room) => {
+    const card = document.createElement("button");
+    card.type = "button";
+    card.className = "room-rail-card";
+    card.classList.toggle("is-active", room.id === state.activeRoomId);
+    card.style.setProperty("--room-color", room.color);
+    card.dataset.roomId = room.id;
+
+    const count = getMessagesForRoom(room.id, { includePending: true }).length;
+    card.innerHTML = `
+      <span class="room-rail-card__glow"></span>
+      <strong></strong>
+      <span></span>
+    `;
+    card.querySelector("strong").textContent = room.title;
+    card.querySelector("span:last-child").textContent = `${room.mood} · ${count}개`;
+    card.addEventListener("click", () => openRoom(room.id));
+    els.roomRail.appendChild(card);
+  });
+}
+
 function renderChat() {
-  const room = state.rooms.find((item) => item.id === state.activeRoomId);
+  const room = getActiveRoom();
   if (!room) {
+    els.chatPanel.hidden = true;
+    els.minimizedChatBar.hidden = true;
+    els.newMessagesButton.hidden = true;
+    return;
+  }
+
+  if (state.chatMinimized) {
     els.chatPanel.hidden = true;
     return;
   }
+
+  const previousScrollTop = els.messages.scrollTop;
+  const wasAtBottom = isMessagesNearBottom();
+  const previousIds = state.renderedMessageIds[room.id] || [];
 
   els.chatPanel.hidden = false;
   els.activeRoomMood.textContent = room.mood;
   els.activeRoomTitle.textContent = room.title;
   els.activeRoomDescription.textContent = room.description || "설명 없음";
+  els.editRoomButton.hidden = !canEditRoom(room);
 
-  const roomMessages = getMessagesForRoom(room.id);
+  const roomMessages = getMessagesForRoom(room.id, { includePending: true });
+  const messageIds = roomMessages.map((message) => message.id);
+  const hasAddedMessages = messageIds.some((id) => !previousIds.includes(id));
+  const shouldAutoScroll =
+    state.forceScrollMessages ||
+    state.lastRenderedRoomId !== room.id ||
+    previousIds.length === 0 ||
+    wasAtBottom;
+
   els.messages.innerHTML = "";
 
   if (!roomMessages.length) {
@@ -344,11 +532,13 @@ function renderChat() {
     const node = document.createElement("article");
     node.className = "message";
     node.classList.toggle("is-me", message.authorId === state.identity.id);
+    node.classList.toggle("is-pending", message.status === "pending");
+    node.classList.toggle("is-failed", message.status === "failed");
     node.style.setProperty("--author-color", message.authorColor || "#67e8f9");
     node.innerHTML = `
       <div class="message__meta">
         <span class="message__author"></span>
-        <span>${formatTime(message.createdAt)}</span>
+        <span>${getMessageStatusLabel(message)}</span>
       </div>
       <p></p>
     `;
@@ -359,8 +549,34 @@ function renderChat() {
   });
 
   requestAnimationFrame(() => {
-    els.messages.scrollTop = els.messages.scrollHeight;
+    if (shouldAutoScroll) {
+      scrollMessagesToBottom();
+      state.hasNewMessages = false;
+    } else {
+      els.messages.scrollTop = previousScrollTop;
+      state.hasNewMessages = state.hasNewMessages || hasAddedMessages;
+    }
+    state.forceScrollMessages = false;
+    state.renderedMessageIds[room.id] = messageIds;
+    state.lastRenderedRoomId = room.id;
+    renderNewMessageButton();
   });
+}
+
+function renderMinimizedChat() {
+  const room = getActiveRoom();
+  const shouldShow = Boolean(room && state.chatMinimized);
+  els.minimizedChatBar.hidden = !shouldShow;
+  if (!shouldShow) return;
+
+  const count = getMessagesForRoom(room.id, { includePending: true }).length;
+  els.minimizedRoomTitle.textContent = room.title;
+  els.minimizedRoomCount.textContent = `${count}개`;
+  els.minimizedChatBar.style.setProperty("--room-color", room.color);
+}
+
+function renderNewMessageButton() {
+  els.newMessagesButton.hidden = !state.hasNewMessages || state.chatMinimized;
 }
 
 function renderStatus() {
@@ -368,17 +584,96 @@ function renderStatus() {
     state.provider instanceof SupabaseProvider ? "Supabase 실시간" : "로컬 모드";
   els.connectionStatus.textContent = providerLabel;
   els.roomCount.textContent = `방 ${state.rooms.length}개`;
-  els.messageCount.textContent = `메시지 ${state.messages.length}개`;
+  els.messageCount.textContent = `메시지 ${state.messages.length + state.pendingMessages.length}개`;
 }
 
 function openRoom(roomId) {
   state.activeRoomId = roomId;
+  state.chatMinimized = false;
+  state.forceScrollMessages = true;
+  state.hasNewMessages = false;
   render();
-  els.messageInput.focus();
+  focusComposerIfDesktop();
 }
 
-function getMessagesForRoom(roomId) {
-  return state.messages.filter((message) => message.roomId === roomId);
+function getActiveRoom() {
+  return state.rooms.find((item) => item.id === state.activeRoomId);
+}
+
+function getMessagesForRoom(roomId, options = {}) {
+  const messages = state.messages.filter((message) => message.roomId === roomId);
+  if (!options.includePending) return messages;
+
+  const savedIds = new Set(messages.map((message) => message.id));
+  const pending = state.pendingMessages.filter(
+    (message) => message.roomId === roomId && !savedIds.has(message.id),
+  );
+  return [...messages, ...pending].sort(sortByCreatedAt);
+}
+
+function canEditRoom(room) {
+  return Boolean(room.creatorId && room.creatorId === state.identity.id);
+}
+
+function addRoomOptimistically(room) {
+  if (state.rooms.some((item) => item.id === room.id)) return;
+  state.rooms = [...state.rooms, room].filter(isRoomAlive).sort(sortByCreatedAt);
+  render();
+}
+
+function updateRoomOptimistically(roomId, patch) {
+  state.rooms = state.rooms.map((room) =>
+    room.id === roomId
+      ? {
+          ...room,
+          ...patch,
+        }
+      : room,
+  );
+  render();
+}
+
+function removeRoomOptimistically(roomId) {
+  state.rooms = state.rooms.filter((room) => room.id !== roomId);
+  render();
+}
+
+function isMessagesNearBottom() {
+  if (!els.messages || els.messages.hidden) return true;
+  const distance = els.messages.scrollHeight - els.messages.scrollTop - els.messages.clientHeight;
+  return distance < 48;
+}
+
+function scrollMessagesToBottom() {
+  els.messages.scrollTop = els.messages.scrollHeight;
+}
+
+function focusComposerIfDesktop() {
+  if (window.matchMedia("(min-width: 721px)").matches) {
+    els.messageInput.focus();
+  }
+}
+
+function getMessageStatusLabel(message) {
+  if (message.status === "pending") return "전송 중";
+  if (message.status === "failed") return "전송 실패";
+  return formatTime(message.createdAt);
+}
+
+function getRoomVisual(roomId) {
+  const hash = hashString(roomId);
+  return {
+    delay: -1 * ((hash % 800) / 100),
+    drift: 8 + ((hash >> 3) % 700) / 100,
+  };
+}
+
+function hashString(value) {
+  let hash = 0;
+  for (let index = 0; index < value.length; index += 1) {
+    hash = (hash * 31 + value.charCodeAt(index)) >>> 0;
+  }
+  return hash;
 }
 
 function getOrCreateIdentity() {
@@ -403,8 +698,11 @@ function getOrCreateIdentity() {
 
 function paintIdentity() {
   els.identityName.textContent = state.identity.name;
+  els.mobileIdentityName.textContent = state.identity.name;
   els.identityDot.style.background = state.identity.color;
   els.identityDot.style.boxShadow = `0 0 20px ${state.identity.color}`;
+  els.mobileIdentityDot.style.background = state.identity.color;
+  els.mobileIdentityDot.style.boxShadow = `0 0 20px ${state.identity.color}`;
 }
 
 function setupStarfield() {
@@ -537,6 +835,19 @@ class LocalProvider {
     this.write(snapshot);
   }
 
+  async updateRoom(roomId, patch) {
+    const snapshot = this.read();
+    snapshot.rooms = snapshot.rooms.map((room) =>
+      room.id === roomId
+        ? {
+            ...room,
+            ...patch,
+          }
+        : room,
+    );
+    this.write(snapshot);
+  }
+
   async createMessage(message) {
     const snapshot = this.read();
     snapshot.messages.push(message);
@@ -627,6 +938,20 @@ class SupabaseProvider {
 
   async createRoom(room) {
     const { error } = await this.client.from("rooms").insert(toDbRoom(room));
+    if (isMissingRoomMetadataError(error)) {
+      const { error: legacyError } = await this.client.from("rooms").insert(toDbRoom(room, { legacy: true }));
+      if (legacyError) throw legacyError;
+      return;
+    }
+    if (error) throw error;
+  }
+
+  async updateRoom(roomId, patch) {
+    const { error } = await this.client
+      .from("rooms")
+      .update(toDbRoomPatch(patch))
+      .eq("id", roomId)
+      .eq("space_id", this.spaceId);
     if (error) throw error;
   }
 
@@ -636,8 +961,8 @@ class SupabaseProvider {
   }
 }
 
-function toDbRoom(room) {
-  return {
+function toDbRoom(room, options = {}) {
+  const payload = {
     id: room.id,
     space_id: room.spaceId,
     title: room.title,
@@ -647,7 +972,26 @@ function toDbRoom(room) {
     position_x: room.x,
     position_y: room.y,
     created_at: room.createdAt,
+    updated_at: room.updatedAt,
     expires_at: room.expiresAt,
+  };
+
+  if (!options.legacy) {
+    payload.creator_id = room.creatorId;
+  } else {
+    delete payload.updated_at;
+  }
+
+  return payload;
+}
+
+function toDbRoomPatch(patch) {
+  return {
+    title: patch.title,
+    description: patch.description,
+    mood: patch.mood,
+    color: patch.color,
+    updated_at: patch.updatedAt,
   };
 }
 
@@ -659,9 +1003,11 @@ function fromDbRoom(room) {
     description: room.description,
     mood: room.mood,
     color: room.color,
+    creatorId: room.creator_id || "",
     x: room.position_x,
     y: room.position_y,
     createdAt: room.created_at,
+    updatedAt: room.updated_at || room.created_at,
     expiresAt: room.expires_at,
   };
 }
@@ -690,4 +1036,10 @@ function fromDbMessage(message) {
     content: message.content,
     createdAt: message.created_at,
   };
+}
+
+function isMissingRoomMetadataError(error) {
+  if (!error) return false;
+  const text = `${error.message || ""} ${error.details || ""} ${error.hint || ""}`;
+  return text.includes("creator_id") || text.includes("updated_at");
 }
