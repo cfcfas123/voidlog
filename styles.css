@@ -355,11 +355,12 @@ select:focus-visible {
   position: absolute;
   right: clamp(14px, 4vw, 56px);
   bottom: 70px;
-  z-index: 5;
+  z-index: 8;
   display: grid;
-  grid-template-rows: auto 1fr auto;
+  grid-template-rows: auto minmax(0, 1fr) auto;
   width: min(460px, calc(100vw - 28px));
   height: min(620px, calc(100vh - 132px));
+  min-height: 0;
   border: 1px solid var(--line);
   border-radius: 8px;
   overflow: hidden;
@@ -408,17 +409,22 @@ select:focus-visible {
 
 .messages-wrap {
   position: relative;
+  display: flex;
   min-height: 0;
   overflow: hidden;
 }
 
 .messages {
   display: flex;
+  flex: 1 1 auto;
   flex-direction: column;
   gap: 10px;
   height: 100%;
+  min-height: 0;
   padding: 18px;
   overflow-y: auto;
+  overscroll-behavior: contain;
+  -webkit-overflow-scrolling: touch;
 }
 
 .message {
@@ -774,6 +780,19 @@ select:focus-visible {
     scroll-snap-align: start;
   }
 
+  .void-stage.is-chat-open .room-rail,
+  .void-stage.is-chat-open .mobile-dock,
+  .void-stage.is-chat-open .status-strip {
+    visibility: hidden;
+    opacity: 0;
+    pointer-events: none;
+    transform: translateY(12px);
+  }
+
+  .void-stage.is-chat-open .rooms-layer {
+    pointer-events: none;
+  }
+
   .room-rail-card.is-active {
     border-color: var(--room-color);
   }
@@ -825,6 +844,12 @@ select:focus-visible {
     backdrop-filter: blur(22px);
   }
 
+  .room-rail,
+  .mobile-dock,
+  .status-strip {
+    transition: opacity 160ms ease, transform 160ms ease, visibility 160ms ease;
+  }
+
   .dock-button {
     display: inline-flex;
     align-items: center;
@@ -863,8 +888,10 @@ select:focus-visible {
     left: 0;
     right: 0;
     bottom: 0;
+    z-index: 12;
     width: 100%;
     height: min(86svh, 720px);
+    max-height: calc(100svh - 8px);
     border-right: 0;
     border-bottom: 0;
     border-left: 0;

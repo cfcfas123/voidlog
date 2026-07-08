@@ -51,6 +51,7 @@ document.addEventListener("DOMContentLoaded", async () => {
 
 function bindElements() {
   Object.assign(els, {
+    voidStage: document.querySelector("#voidStage"),
     gate: document.querySelector("#gate"),
     gateForm: document.querySelector("#gateForm"),
     gateError: document.querySelector("#gateError"),
@@ -412,11 +413,18 @@ function applySnapshot(snapshot) {
 }
 
 function render() {
+  renderShellState();
   renderRooms();
   renderRoomRail();
   renderChat();
   renderMinimizedChat();
   renderStatus();
+}
+
+function renderShellState() {
+  const hasActiveRoom = Boolean(getActiveRoom());
+  els.voidStage.classList.toggle("is-chat-open", hasActiveRoom && !state.chatMinimized);
+  els.voidStage.classList.toggle("is-chat-minimized", hasActiveRoom && state.chatMinimized);
 }
 
 function renderRooms() {
